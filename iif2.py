@@ -55,6 +55,8 @@ async def main():
     for x in range(0, image_data['width'], tile_width):
         for y in range(0, image_data['height'], tile_height):
             tile = {'x': x, 'y': y}
+            # The right-most and bottom-most tiles need to be decreased
+            # if they would exceed the size of the full image.
             tile['width'] = min(tile_width, image_data['width'] - x)
             tile['height'] = min(tile_height, image_data['height'] - y)
             tile['file'] = f"{path}_{x}_{y}.jpg"
