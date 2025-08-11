@@ -50,6 +50,7 @@ async def main():
     # Pick the smallest scale factor(usually 1x)
     # This is to ensure we get the highest resolution tiles available
     scale_factor = min(image_data["tiles"][0]["scaleFactors"])
+    # And pass the index of scale, as per the API.
     scale = image_data["tiles"][0]["scaleFactors"].index(scale_factor)
     tiles = []
     for x in range(0, image_data['width'], tile_width):
