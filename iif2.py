@@ -28,13 +28,13 @@ async def consumer(queue):
                     await img.write(r.content)
 
 
-async def to_url(base_url, scale, x, y, width, height):
+def to_url(base_url, scale, x, y, width, height):
     return (
         f"{base_url}/{x},{y},{width},{height}/{width},{height}/"
         f"{scale}/default.jpg"
     )
 
-async def filename(path, x, y):
+def filename(path, x, y):
     return f"{path}_{x}_{y}.jpg"
 
 
@@ -66,8 +66,8 @@ async def main():
             # if they would exceed the size of the full image.
             this_tile_width = min(tile_width, image_data["width"] - x)
             this_tile_height = min(tile_height, image_data["height"] - y)
-            tile["file"] = await filename(path, x, y)
-            tile["url"] = await to_url(base_url, scale, x, y, this_tile_width, this_tile_height)
+            tile["file"] = filename(path, x, y)
+            tile["url"] = to_url(base_url, scale, x, y, this_tile_width, this_tile_height)
             tiles.append(tile)
 
     await asyncio.gather(
