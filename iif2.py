@@ -1,13 +1,16 @@
 #!/usr/bin/env python
 
 import asyncio
-from aiofile import async_open
-#from pathlib import Path
 
 import httpx
+from aiofile import async_open
 from PIL import Image
 
+# from pathlib import Path
+
+
 QUEUE_SIZE = 8
+
 
 async def consumer(queue):
     async with httpx.AsyncClient(http2=True) as client:
@@ -15,21 +18,24 @@ async def consumer(queue):
             tile = await queue.get()
             if tile is None:
                 break
-            print(f"got job: {tile['url']}, {tile['file']}")
-            r = await client.get(tile['url'])
-            print(f"Got status code: {r.status_code}")
+            print(f"Requesting: {tile['url']}")
+            r = await client.get(tile["url"])
+            print(
+                f"Got status code: {r.status_code} for {tile['url']} => {tile['file']}"
+            )
             if r.status_code == 200:
-                async with async_open(tile['file'], mode="wb") as img:
+                async with async_open(tile["file"], mode="wb") as img:
                     await img.write(r.content)
 
 
-async def producer(queue, tiles):
-    async def get_tile(tile):
-        await queue.put(tile)
+async def to_url(base_url, scale, x, y, width, height):
+    return (
+        f"{base_url}/{x},{y},{width},{height}/{width},{height}/"
+        f"{scale}/default.jpg"
+    )
 
-    await asyncio.gather(*(get_tile(tile) for tile in tiles))
-    for _ in range(len(tiles)):
-        await queue.put(None) # Sentinels for consumers to terminate
+async def filename(path, x, y):
+    return f"{path}_{x}_{y}.jpg"
 
 
 async def main():
@@ -53,31 +59,29 @@ async def main():
     # And pass the index of scale, as per the API.
     scale = image_data["tiles"][0]["scaleFactors"].index(scale_factor)
     tiles = []
-    for x in range(0, image_data['width'], tile_width):
-        for y in range(0, image_data['height'], tile_height):
-            tile = {'x': x, 'y': y}
+    for x in range(0, image_data["width"], tile_width):
+        for y in range(0, image_data["height"], tile_height):
+            tile = {"x": x, "y": y}
             # The right-most and bottom-most tiles need to be decreased
             # if they would exceed the size of the full image.
-            tile['width'] = min(tile_width, image_data['width'] - x)
-            tile['height'] = min(tile_height, image_data['height'] - y)
-            tile['file'] = f"{path}_{x}_{y}.jpg"
-            tile['url'] = (
-                    f"{base_url}/{x},{y},{tile_width},"
-                    f"{tile_height}/{tile_width},{tile_height}/"
-                    f"{scale}/default.jpg"
-            )
-            tiles.append(tile);
+            this_tile_width = min(tile_width, image_data["width"] - x)
+            this_tile_height = min(tile_height, image_data["height"] - y)
+            tile["file"] = await filename(path, x, y)
+            tile["url"] = await to_url(base_url, scale, x, y, this_tile_width, this_tile_height)
+            tiles.append(tile)
 
     await asyncio.gather(
-            producer(queue, tiles),
-            *(consumer(queue) for _ in range(QUEUE_SIZE)),
-            )
+        *(consumer(queue) for _ in range(QUEUE_SIZE)),
+        *(queue.put(tile) for tile in tiles),
+        *(
+            queue.put(None) for _ in range(len(tiles))
+        ),  # Sentinal to stop processing the queue
+    )
 
-    montage = Image.new("RGB", (image_data['width'], image_data['height']))
+    montage = Image.new("RGB", (image_data["width"], image_data["height"]))
     for tile in tiles:
-        print(f"montage.paste({tile['file']}, {tile['x']}, {tile['y']}")
-        with Image.open(tile['file']) as im:
-            montage.paste(im, (tile['x'], tile['y']))
+        with Image.open(tile["file"]) as im:
+            montage.paste(im, (tile["x"], tile["y"]))
     output_path = f"{path}.jpg"
     montage.save(output_path)
     print(f"Montage saved to {output_path}")
