@@ -1,16 +1,15 @@
 #!/usr/bin/env python
 
-import asyncio
 import argparse
+import asyncio
 import os
+import sys
 import time
 
-import httpx
 import aiofiles
+import httpx
 from PIL import Image
-
 from pathlib import Path
-
 
 QUEUE_SIZE = 8
 
@@ -18,16 +17,21 @@ QUEUE_SIZE = 8
 async def consumer(queue, client):
     while True:
         tile = await queue.get()
-        r = await client.get(tile["url"])
-        if r.status_code == 200:
-            await aiofiles.stderr.write("#")
-            async with aiofiles.open(tile["file"], mode="wb") as img:
-                await img.write(r.content)
-        else:
-            await aiofiles.stderr.write("!")
+        for retry in range(2):
+            r = await client.get(tile["url"])
+            if r.status_code == 200:
+                if retry:
+                    sys.stderr.write("*")
+                else:
+                    sys.stderr.write("#")
+                async with aiofiles.open(tile["file"], mode="wb") as img:
+                    await img.write(r.content)
+                break   # Exit from retry loop
+            else:
+                sys.stderr.write("!")
+                await ayncio.sleep(5)
 
-        await aiofiles.stderr.flush()
-
+        sys.stderr.flush()
         queue.task_done()
 
 
@@ -46,10 +50,7 @@ async def main():
     args = parser.parse_args()
 
     # Use provided manifest URL or default to example
-    imageurl = (
-        args.url
-        or "https://map-view.nls.uk/iiif/2/10234%2F102345876/info.json"
-    )
+    imageurl = args.url or "https://map-view.nls.uk/iiif/2/10234%2F102345876/info.json"
     queue = asyncio.Queue()
 
     path = imageurl.split("/")[-2]
@@ -60,7 +61,7 @@ async def main():
     else:
         output_path = f"{path}.{img_type}"
 
-    print(f"Downloading tiles for f{imageurl}:")
+    print(f"Downloading tiles for {imageurl}:")
     async with aiofiles.tempfile.TemporaryDirectory() as tmpdir:
         async with httpx.AsyncClient(http2=True) as client:
             r = await client.get(imageurl)
@@ -92,7 +93,13 @@ async def main():
                     this_tile_height = min(tile_height, image_data["height"] - y)
                     tile["file"] = Path(tmpdir, tile_filename(path, img_type, x, y))
                     tile["url"] = tile_url(
-                        base_url, scale, img_type, x, y, this_tile_width, this_tile_height
+                        base_url,
+                        scale,
+                        img_type,
+                        x,
+                        y,
+                        this_tile_width,
+                        this_tile_height,
                     )
                     tiles.append(tile)
                     queue.put_nowait(tile)
