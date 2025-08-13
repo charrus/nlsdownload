@@ -42,7 +42,7 @@ async def main():
                 )
                 print(f"Fetching tile: {tile_url}")
                 tile_response = await client.get(tile_url)
-                #tile_response = httpx.get(tile_url)
+                # tile_response = httpx.get(tile_url)
                 if tile_response.status_code == 200:
                     print(f"Tile fetched successfully: {tile_url}")
                     tile_image = Image.open(BytesIO(tile_response.content))

@@ -5,11 +5,11 @@ import asyncio
 import os
 import sys
 import time
+from pathlib import Path
 
 import aiofiles
 import httpx
 from PIL import Image
-from pathlib import Path
 
 QUEUE_SIZE = 8
 
