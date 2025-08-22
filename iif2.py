@@ -1,8 +1,8 @@
 #!/usr/bin/env python
+"""IIF Tile Downloader."""
 
 import argparse
 import asyncio
-import os
 import sys
 import time
 from pathlib import Path
@@ -11,14 +11,15 @@ import aiofiles
 import httpx
 from PIL import Image
 
-QUEUE_SIZE = 8
+QUEUE_SIZE = 16
 
 
-async def consumer(queue, client):
+async def consumer(queue: asyncio.Queue, client: httpx.AsyncClient):
+    """Process tiles from the queue."""
     while True:
         tile = await queue.get()
         for retry in range(2):
-            r = await client.get(tile["url"])
+            r = await client.get(tile.get("url"))
             if r.status_code == 200:
                 if retry:
                     sys.stderr.write("*")
@@ -29,37 +30,37 @@ async def consumer(queue, client):
                 break   # Exit from retry loop
             else:
                 sys.stderr.write("!")
-                await ayncio.sleep(5)
+                await asyncio.sleep(5)
 
         sys.stderr.flush()
         queue.task_done()
 
 
-def tile_url(base_url, scale, img_type, x, y, width, height):
-    return f"{base_url}/{x},{y},{width},{height}/{width},{height}/{scale}/default.{img_type}"
+def tile_url(
+    base_url: str,
+    scale: int,
+    img_type: str,
+    x: int,
+    y: int,
+    width: int,
+    height: int,
+) -> str:
+    """Generate the URL for a tile image."""
+    return (
+        f"{base_url}/"
+        f"{x},{y},{width},{height}/"
+        f"{width},{height}/{scale}/default.{img_type}"
+    )
 
 
-def tile_filename(path, img_type, x, y):
+def tile_filename(path: str, img_type: str, x: int, y: int) -> str:
+    """Generate the filename for a tile image."""
     return f"{path}_{x}_{y}.{img_type}"
 
 
-async def main():
-    parser = argparse.ArgumentParser(description="Download and stitch IIIF tiles")
-    parser.add_argument("--url", help="IIIF manifest URL")
-    parser.add_argument("--output", help="Output filename")
-    args = parser.parse_args()
-
-    # Use provided manifest URL or default to example
-    imageurl = args.url or "https://map-view.nls.uk/iiif/2/10234%2F102345876/info.json"
+async def main(imageurl: str, output_path: str, img_type: str):
+    """Download IIF tiles and create a montage image."""
     queue = asyncio.Queue()
-
-    path = imageurl.split("/")[-2]
-    img_type = "jpg"
-    if args.output:
-        output_path = args.output
-        img_type = output_path.split(".")[-1]
-    else:
-        output_path = f"{path}.{img_type}"
 
     print(f"Downloading tiles for {imageurl}:")
     async with aiofiles.tempfile.TemporaryDirectory() as tmpdir:
@@ -71,13 +72,13 @@ async def main():
             image_data = r.json()
             base_url = image_data.get("id", image_data.get("@id"))
             path = base_url.split("/")[-1]
-            tile_width = image_data["tiles"][0]["width"]
-            tile_height = image_data["tiles"][0]["height"]
+            tile_width: int = image_data["tiles"][0]["width"]
+            tile_height: int = image_data["tiles"][0]["height"]
             # Pick the smallest scale factor(usually 1x)
             # This is to ensure we get the highest resolution tiles available
-            scale_factor = min(image_data["tiles"][0]["scaleFactors"])
+            scale_factor: int = min(image_data["tiles"][0]["scaleFactors"])
             # And pass the index of scale, as per the API.
-            scale = image_data["tiles"][0]["scaleFactors"].index(scale_factor)
+            scale: int = image_data["tiles"][0]["scaleFactors"].index(scale_factor)
             tiles = []
             tasks = []
 
@@ -123,6 +124,27 @@ async def main():
 
 if __name__ == "__main__":
     started_at = time.monotonic()
-    asyncio.run(main())
+    parser = argparse.ArgumentParser(prog='iif2', usage='%(prog)s [options]')
+    parser.add_argument(
+        "--url",
+        help=(
+            "IIIF manifest URL."
+        ),
+        default=(
+            "https://map-view.nls.uk/iiif/2/10234%2F102345876/info.json"
+        ),
+    )
+    parser.add_argument("--output", help="Output filename")
+    args = parser.parse_args()
+    # Use provided manifest URL or default to example
+    imageurl = args.url
+    path = imageurl.split("/")[-2]
+    img_type = "jpg"
+    if args.output:
+        output_path = args.output
+        img_type = output_path.split(".")[-1]
+    else:
+        output_path = f"{path}.{img_type}"
+    asyncio.run(main(imageurl, output_path, img_type))
     total_slept_for = time.monotonic() - started_at
     print(f"{QUEUE_SIZE} workers took {total_slept_for:.2f} seconds")

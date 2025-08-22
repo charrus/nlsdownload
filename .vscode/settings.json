@@ -1,0 +1,10 @@
+{
+    "ruff.nativeServer": "on",
+    "ruff.configurationPreference": "filesystemFirst",
+    "python.experiments.enabled": false,
+    "ruff.configuration": "pyproject.toml",
+    "python.terminal.shellIntegration.enabled": true,
+    "debugpy.debugJustMyCode": false,
+    "python.createEnvironment.contentButton": "show",
+    "flake8.enabled" : false
+}
