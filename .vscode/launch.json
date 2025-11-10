@@ -4,13 +4,38 @@
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
-    
         {
             "name": "Python Debugger: Current File",
             "type": "debugpy",
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal"
+        },
+        {
+            "name": "Python Debugger: XYZ",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/xyz.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--xyz",
+                "1940s.json",
+                "--output",
+                "output.png"
+            ],
+        },
+        {
+            "name": "Python Debugger: GeoJson",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/geojson.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--geojson",
+                "map.geojson",
+                "--output",
+                "output.jpg"
+            ]
         }
     ]
 }

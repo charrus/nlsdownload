@@ -6,5 +6,6 @@
     "python.terminal.shellIntegration.enabled": true,
     "debugpy.debugJustMyCode": false,
     "python.createEnvironment.contentButton": "show",
-    "flake8.enabled" : false
+    "flake8.enabled": false,
+    "idf.pythonInstallPath": "/usr/bin/python"
 }

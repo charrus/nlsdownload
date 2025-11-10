@@ -1,4 +1,6 @@
 #!/usr/bin/env python
+"""IIF Tile Downloader."""
+
 
 import asyncio
 from io import BytesIO
@@ -8,6 +10,7 @@ from PIL import Image
 
 
 async def main():
+    """Download IIF tiles and create a montage image."""
     imageurl = "https://map-view.nls.uk/iiif/2/10234%2F102345876/info.json"
 
     async with httpx.AsyncClient() as client:
