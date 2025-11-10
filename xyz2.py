@@ -12,8 +12,6 @@ import aiofiles
 import httpx
 from PIL import Image
 
-QUEUE_SIZE = 16
-
 
 # Simple approach - no queue - just request with retry logic
 async def fetch_tile(session, tile):
@@ -45,30 +43,6 @@ async def fetch_tile(session, tile):
     return tile
 
 
-# Queue based approach - pull off queue tiles to download with retry logic
-async def consumer(queue: asyncio.Queue, client: httpx.AsyncClient):
-    """Process tiles from the queue."""
-    while True:
-        tile = await queue.get()
-        if not tile["file"].exists():
-            for retry in range(2):
-                r = await client.get(tile.get("url"))
-                if r.status_code == 200:
-                    if retry:
-                        sys.stderr.write("*")
-                    else:
-                        sys.stderr.write("#")
-                async with aiofiles.open(tile["file"], mode="wb") as img:
-                    await img.write(r.content)
-                break  # Exit from retry loop
-            else:
-                sys.stderr.write("!")
-                await asyncio.sleep(5)
-
-        sys.stderr.flush()
-        queue.task_done()
-
-
 def tile_url(
     base_url: str,
     scale: int,
@@ -94,6 +68,9 @@ def tile_filename(path: str, img_type: str, x: int, y: int) -> str:
 async def download_tiles(session, image_data):
     """Download IIF tiles and create a montage image."""
 
+    tmpdir = Path("tiles")
+    tmpdir.mkdir(exist_ok=True)
+
     tasks = []
 
     for x in range(image_data["startx"], image_data["endx"]):
@@ -104,7 +81,7 @@ async def download_tiles(session, image_data):
                 "z": image_data["scale"],
             }
             tile["file"] = Path(
-                image_data["tmpdir"],
+                tmpdir,
                 tile_filename(image_data["path"], image_data["img_type"], x, y),
             )
             tile["url"] = (
@@ -116,8 +93,6 @@ async def download_tiles(session, image_data):
             # tiles.append(tile)
             tasks.append(fetch_tile(session, tile))
 
-    # tasks = [fetch_tile(client, tile) for tile in tiles]
-
     downloaded_tiles = await asyncio.gather(*tasks, return_exceptions=True)
 
     return downloaded_tiles
@@ -126,16 +101,12 @@ async def download_tiles(session, image_data):
 async def main(file: str, output_path: str):
     """Download IIF tiles and create a montage image."""
 
-    tmpdir = Path("tiles")
-    tmpdir.mkdir(exist_ok=True)
-
     async with httpx.AsyncClient(http2=True) as client:
         async with aiofiles.open(file, mode="r") as image_data_file:
             image_data_contents = await image_data_file.read()
 
             image_data = json.loads(image_data_contents)
             image_data = image_data["data"]["result"][0]
-            image_data["tmpdir"] = tmpdir
             image_data["base_url"] = image_data["overlays"][0]["overlay"]["url"]
             image_data["path"] = image_data["slug"]
             image_data["startx"] = 261808 - 9
@@ -186,4 +157,4 @@ if __name__ == "__main__":
         output_path = "output.jpg"
     asyncio.run(main(xyzfile, output_path))
     total_slept_for = time.monotonic() - started_at
-    print(f"{QUEUE_SIZE} workers took {total_slept_for:.2f} seconds")
+    print(f"workers took {total_slept_for:.2f} seconds")
