@@ -1,0 +1,47 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {},
+      "geometry": {
+        "coordinates": [
+          [
+            [
+              -0.23338715494861617,
+              51.49531268692931
+            ],
+            [
+              -0.23338715494861617,
+              51.46487551325575
+            ],
+            [
+              -0.19156657736763805,
+              51.46487551325575
+            ],
+            [
+              -0.19156657736763805,
+              51.49531268692931
+            ],
+            [
+              -0.23338715494861617,
+              51.49531268692931
+            ]
+          ]
+        ],
+        "type": "Polygon"
+      },
+      "id": 0
+    }
+  ],
+  "totalFeatures": 1,
+  "numberMatched": 1,
+  "numberReturned": 1,
+  "timeStamp": "2025-08-23T07:13:38.282Z",
+  "crs": {
+    "type": "name",
+    "properties": {
+      "name": "urn:ogc:def:crs:EPSG::4326"
+    }
+  }
+}
