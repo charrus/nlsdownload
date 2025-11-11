@@ -44,7 +44,7 @@ async def fetch_tile(session, tile):
     return tile
 
 
-def get_tiles(tmpdir: Path, image_data: dict) -> iter:
+def generate_tiles(tmpdir: Path, image_data: dict) -> iter:
     """Generator for all the tiles in the xyz map dataset
     to download."""
 
@@ -79,7 +79,7 @@ async def download_tiles(image_data: dict) -> list:
         tasks = []
         results = []
 
-        for tile in get_tiles(
+        for tile in generate_tiles(
             tmpdir,
             image_data,
         ):
