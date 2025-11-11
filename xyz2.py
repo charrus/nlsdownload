@@ -55,9 +55,10 @@ def get_tiles(tmpdir: Path, image_data: dict) -> iter:
                 "y": image_data["tile_height"] * (y - image_data["starty"]),
                 "z": image_data["scale"],
             }
+
             tile["file"] = Path(
                 tmpdir,
-                f"{image_data["path"]}_{x}_{y}.{image_data["img_type"]}",
+                f"{image_data["path"]}_{x}_{y}.tmp",
             )
             tile["url"] = (
                 image_data["base_url"]
@@ -68,7 +69,7 @@ def get_tiles(tmpdir: Path, image_data: dict) -> iter:
             yield tile
 
 
-async def download_tiles(image_data) -> list:
+async def download_tiles(image_data: dict) -> list:
     """Download IIF tiles and create a montage image."""
 
     tmpdir = Path("tiles")
@@ -78,7 +79,10 @@ async def download_tiles(image_data) -> list:
         tasks = []
         results = []
 
-        for tile in get_tiles(tmpdir, image_data):
+        for tile in get_tiles(
+            tmpdir,
+            image_data,
+        ):
             tasks.append(asyncio.create_task(fetch_tile(session, tile)))
 
         # Exit early if there are exceptions
@@ -107,6 +111,7 @@ async def main(file: str, output_path: str):
         image_data_contents = await image_data_file.read()
 
         image_data = json.loads(image_data_contents)
+
         image_data = image_data["data"]["result"][0]
         image_data["base_url"] = image_data["overlays"][0]["overlay"]["url"]
         image_data["path"] = image_data["slug"]
@@ -117,19 +122,19 @@ async def main(file: str, output_path: str):
         # starty = 697468 + 10
         image_data["starty"] = 174377 - 10
         image_data["endy"] = image_data["starty"] + 38
-        image_data["width"] = (image_data["endx"] - image_data["startx"]) * 256
-        image_data["height"] = (image_data["endy"] - image_data["starty"]) * 256
         image_data["tile_width"] = 256
         image_data["tile_height"] = 256
         image_data["scale"] = image_data["overlays"][0]["overlay"]["max_zoom"]
-        image_data["img_type"] = image_data["base_url"].split(".")[-1]
+
+    width = (image_data["endx"] - image_data["startx"]) * image_data["tile_width"]
+    height = (image_data["endy"] - image_data["starty"]) * image_data["tile_height"]
 
     tiles = await download_tiles(image_data)
 
     if tiles:
         print()
         print(f"Creating montage {output_path}")
-        montage = Image.new("RGB", (image_data["width"], image_data["height"]))
+        montage = Image.new("RGB", (width, height))
         for tile in tiles:
             with Image.open(tile["file"]) as im:
                 montage.paste(im, (tile["x"], tile["y"]))
