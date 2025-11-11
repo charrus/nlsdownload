@@ -25,6 +25,19 @@
             ],
         },
         {
+            "name": "Python Debugger: XYZ2",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/xyz2.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--xyz",
+                "1940s.json",
+                "--output",
+                "output.png"
+            ],
+        },
+        {
             "name": "Python Debugger: GeoJson",
             "type": "debugpy",
             "request": "launch",

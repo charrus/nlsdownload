@@ -3,3 +3,4 @@ tiles
 *.png
 *.jpg
 .venv
+*.out

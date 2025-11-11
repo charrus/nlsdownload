@@ -25,9 +25,9 @@ async def fetch_tile(session, tile):
         retry = 0
         while retry <= 2:
             response = await session.get(tile.get("url"))
-            if response.status_code == 200:
+            if response.is_success:
                 if not retry:
-                    sys.stderr.write("#")  # Success without retry
+                    sys.stderr.write("#")  # # = OK
                 else:
                     sys.stderr.write("*")  # * = Need to retry URL
                 async with aiofiles.open(tile["file"], mode="wb") as img_file:
@@ -40,38 +40,13 @@ async def fetch_tile(session, tile):
             sys.stderr.write("!")  # Couldn't download tile
             return
 
+    sys.stderr.flush()
     return tile
 
 
-def tile_url(
-    base_url: str,
-    scale: int,
-    img_type: str,
-    x: int,
-    y: int,
-    width: int,
-    height: int,
-) -> str:
-    """Generate the URL for a tile image."""
-    return (
-        f"{base_url}/"
-        f"{x},{y},{width},{height}/"
-        f"{width},{height}/{scale}/default.{img_type}"
-    )
-
-
-def tile_filename(path: str, img_type: str, x: int, y: int) -> str:
-    """Generate the filename for a tile image."""
-    return f"{path}_{x}_{y}.{img_type}"
-
-
-async def download_tiles(session, image_data):
-    """Download IIF tiles and create a montage image."""
-
-    tmpdir = Path("tiles")
-    tmpdir.mkdir(exist_ok=True)
-
-    tasks = []
+def get_tiles(tmpdir: Path, image_data: dict) -> iter:
+    """Generator for all the tiles in the xyz map dataset
+    to download."""
 
     for x in range(image_data["startx"], image_data["endx"]):
         for y in range(image_data["starty"], image_data["endy"]):
@@ -82,7 +57,7 @@ async def download_tiles(session, image_data):
             }
             tile["file"] = Path(
                 tmpdir,
-                tile_filename(image_data["path"], image_data["img_type"], x, y),
+                f"{image_data["path"]}_{x}_{y}.{image_data["img_type"]}",
             )
             tile["url"] = (
                 image_data["base_url"]
@@ -90,53 +65,76 @@ async def download_tiles(session, image_data):
                 .replace("{y}", str(y))
                 .replace("{z}", str(image_data["scale"]))
             )
-            # tiles.append(tile)
-            tasks.append(fetch_tile(session, tile))
+            yield tile
 
-    downloaded_tiles = await asyncio.gather(*tasks, return_exceptions=True)
 
-    return downloaded_tiles
+async def download_tiles(image_data) -> list:
+    """Download IIF tiles and create a montage image."""
+
+    tmpdir = Path("tiles")
+    tmpdir.mkdir(exist_ok=True)
+
+    async with httpx.AsyncClient(http2=True) as session:
+        tasks = []
+        results = []
+
+        for tile in get_tiles(tmpdir, image_data):
+            tasks.append(asyncio.create_task(fetch_tile(session, tile)))
+
+        # Exit early if there are exceptions
+        while tasks:
+            done, pending = await asyncio.wait(
+                tasks,
+                return_when=asyncio.FIRST_EXCEPTION,
+            )
+
+            for task in done:
+                if exc := task.exception():
+                    print(f"Exception raised: {exc}, aborting")
+                    return []
+                else:
+                    results.append(task.result())
+
+            tasks = pending
+
+    return results
 
 
 async def main(file: str, output_path: str):
     """Download IIF tiles and create a montage image."""
 
-    async with httpx.AsyncClient(http2=True) as client:
-        async with aiofiles.open(file, mode="r") as image_data_file:
-            image_data_contents = await image_data_file.read()
+    async with aiofiles.open(file, mode="r") as image_data_file:
+        image_data_contents = await image_data_file.read()
 
-            image_data = json.loads(image_data_contents)
-            image_data = image_data["data"]["result"][0]
-            image_data["base_url"] = image_data["overlays"][0]["overlay"]["url"]
-            image_data["path"] = image_data["slug"]
-            image_data["startx"] = 261808 - 9
-            # startx = 1047234 - 19
-            # endx = 1047385
-            image_data["endx"] = image_data["startx"] + 55
-            # starty = 697468 + 10
-            image_data["starty"] = 174377 - 10
-            image_data["endy"] = image_data["starty"] + 38
-            image_data["width"] = (image_data["endx"] - image_data["startx"]) * 256
-            image_data["height"] = (image_data["endy"] - image_data["starty"]) * 256
-            image_data["tile_width"] = 256
-            image_data["tile_height"] = 256
-            image_data["scale"] = image_data["overlays"][0]["overlay"]["max_zoom"]
-            image_data["img_type"] = image_data["base_url"].split(".")[-1]
+        image_data = json.loads(image_data_contents)
+        image_data = image_data["data"]["result"][0]
+        image_data["base_url"] = image_data["overlays"][0]["overlay"]["url"]
+        image_data["path"] = image_data["slug"]
+        image_data["startx"] = 261808 - 9
+        # startx = 1047234 - 19
+        # endx = 1047385
+        image_data["endx"] = image_data["startx"] + 55
+        # starty = 697468 + 10
+        image_data["starty"] = 174377 - 10
+        image_data["endy"] = image_data["starty"] + 38
+        image_data["width"] = (image_data["endx"] - image_data["startx"]) * 256
+        image_data["height"] = (image_data["endy"] - image_data["starty"]) * 256
+        image_data["tile_width"] = 256
+        image_data["tile_height"] = 256
+        image_data["scale"] = image_data["overlays"][0]["overlay"]["max_zoom"]
+        image_data["img_type"] = image_data["base_url"].split(".")[-1]
 
-            tiles = await download_tiles(client, image_data)
+    tiles = await download_tiles(image_data)
 
-    print()
-    print(f"Creating montage {output_path}")
-    montage = Image.new("RGB", (image_data["width"], image_data["height"]))
-    for tile in tiles:
-        if tile:
-            try:
-                with Image.open(tile["file"]) as im:
-                    montage.paste(im, (tile["x"], tile["y"]))
-            except Exception as e:
-                print(f"Error processing {tile['file']}: {e}")
-    montage.save(output_path)
-    print(f"Montage saved to {output_path}")
+    if tiles:
+        print()
+        print(f"Creating montage {output_path}")
+        montage = Image.new("RGB", (image_data["width"], image_data["height"]))
+        for tile in tiles:
+            with Image.open(tile["file"]) as im:
+                montage.paste(im, (tile["x"], tile["y"]))
+        montage.save(output_path)
+        print(f"Montage saved to {output_path}")
 
 
 if __name__ == "__main__":
