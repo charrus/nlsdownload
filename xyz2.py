@@ -144,7 +144,7 @@ async def main(file: str, output_path: str):
 
 if __name__ == "__main__":
     started_at = time.monotonic()
-    parser = argparse.ArgumentParser(prog="iif2", usage="%(prog)s [options]")
+    parser = argparse.ArgumentParser(prog="xyz2", usage="%(prog)s [options]")
     parser.add_argument(
         "--xyz",
         help=("XYZ Json"),
