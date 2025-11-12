@@ -12,7 +12,7 @@ import aiofiles
 import httpx
 from PIL import Image
 
-QUEUE_SIZE = 100
+QUEUE_SIZE = 1000
 
 
 # Simple approach - no queue - just request with retry logic
@@ -82,7 +82,7 @@ async def download_tiles(image_data: dict) -> list:
 
     async with httpx.AsyncClient(http2=True) as session:
         async with asyncio.TaskGroup() as tg:
-            # Keep QUEUE_SIZE (200) running at once
+            # Keep QUEUE_SIZE (1000) running at once
             for tile in generate_tiles(tmpdir, image_data):
                 if len(tasks) < QUEUE_SIZE:
                     tasks.add(tg.create_task(fetch_tile(session, tile)))
@@ -97,12 +97,12 @@ async def download_tiles(image_data: dict) -> list:
                 )
 
                 for task in done:
+                    # Scedule a new task ASAP
                     if todo:
                         tasks.add(tg.create_task(fetch_tile(session, todo.pop())))
-
+                    # Fail fast if there's an exception
                     if task.exception():
                         return []
-
                     results.append(task.result())
 
     return results
