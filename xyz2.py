@@ -12,6 +12,8 @@ import aiofiles
 import httpx
 from PIL import Image
 
+QUEUE_SIZE = 100
+
 
 # Simple approach - no queue - just request with retry logic
 async def fetch_tile(session, tile):
@@ -44,7 +46,7 @@ async def fetch_tile(session, tile):
     return tile
 
 
-def generate_tiles(tmpdir: Path, image_data: dict) -> iter:
+def generate_tiles(tmpdir: Path, image_data: dict):
     """Generator for all the tiles in the xyz map dataset
     to download."""
 
@@ -74,32 +76,34 @@ async def download_tiles(image_data: dict) -> list:
 
     tmpdir = Path("tiles")
     tmpdir.mkdir(exist_ok=True)
+    tasks = set()
+    todo = []
+    results = []
 
     async with httpx.AsyncClient(http2=True) as session:
-        tasks = []
-        results = []
-
-        for tile in generate_tiles(
-            tmpdir,
-            image_data,
-        ):
-            tasks.append(asyncio.create_task(fetch_tile(session, tile)))
-
-        # Exit early if there are exceptions
-        while tasks:
-            done, pending = await asyncio.wait(
-                tasks,
-                return_when=asyncio.FIRST_EXCEPTION,
-            )
-
-            for task in done:
-                if exc := task.exception():
-                    print(f"Exception raised: {exc}, aborting")
-                    return []
+        async with asyncio.TaskGroup() as tg:
+            # Keep QUEUE_SIZE (200) running at once
+            for tile in generate_tiles(tmpdir, image_data):
+                if len(tasks) < QUEUE_SIZE:
+                    tasks.add(tg.create_task(fetch_tile(session, tile)))
                 else:
-                    results.append(task.result())
+                    todo.append(tile)
 
-            tasks = pending
+            # Exit early if there are exceptions
+            while tasks:
+                done, tasks = await asyncio.wait(
+                    tasks,
+                    return_when=asyncio.FIRST_EXCEPTION,
+                )
+
+                for task in done:
+                    if todo:
+                        tasks.add(tg.create_task(fetch_tile(session, todo.pop())))
+
+                    if task.exception():
+                        return []
+
+                    results.append(task.result())
 
     return results
 
@@ -108,28 +112,38 @@ async def main(file: str, output_path: str):
     """Download IIF tiles and create a montage image."""
 
     async with aiofiles.open(file, mode="r") as image_data_file:
-        image_data_contents = await image_data_file.read()
+        image_file_contents = await image_data_file.read()
+        image_json = json.loads(image_file_contents)
+        image_dict = {}
 
-        image_data = json.loads(image_data_contents)
+        if "data" in image_json and len(image_json["data"].get("result")) > 0:
+            image_data = image_json["data"]["result"][0]
+        else:
+            raise ValueError(f"No data found in {file}")
 
-        image_data = image_data["data"]["result"][0]
-        image_data["base_url"] = image_data["overlays"][0]["overlay"]["url"]
-        image_data["path"] = image_data["slug"]
-        image_data["startx"] = 261808 - 9
+        if "overlays" in image_data and len(image_data["overlays"]) > 0:
+            overlays = image_data["overlays"][0]["overlay"]
+        else:
+            raise ValueError(f"No overlays found in {file}")
+
+        image_dict["base_url"] = overlays.get("url")
+        image_dict["scale"] = overlays.get("max_zoom")
+
+        image_dict["path"] = image_data.get("slug")
+        image_dict["startx"] = 261808 - 9
         # startx = 1047234 - 19
         # endx = 1047385
-        image_data["endx"] = image_data["startx"] + 55
+        image_dict["endx"] = image_dict["startx"] + 55
         # starty = 697468 + 10
-        image_data["starty"] = 174377 - 10
-        image_data["endy"] = image_data["starty"] + 38
-        image_data["tile_width"] = 256
-        image_data["tile_height"] = 256
-        image_data["scale"] = image_data["overlays"][0]["overlay"]["max_zoom"]
+        image_dict["starty"] = 174377 - 10
+        image_dict["endy"] = image_dict["starty"] + 38
+        image_dict["tile_width"] = 256
+        image_dict["tile_height"] = 256
 
-    width = (image_data["endx"] - image_data["startx"]) * image_data["tile_width"]
-    height = (image_data["endy"] - image_data["starty"]) * image_data["tile_height"]
+    width = (image_dict["endx"] - image_dict["startx"]) * image_dict["tile_width"]
+    height = (image_dict["endy"] - image_dict["starty"]) * image_dict["tile_height"]
 
-    tiles = await download_tiles(image_data)
+    tiles = await download_tiles(image_dict)
 
     if tiles:
         print()
