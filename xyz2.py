@@ -46,7 +46,7 @@ async def fetch_tile(session, tile):
     return tile
 
 
-def generate_tiles(tmpdir: Path, image_data: dict):
+async def generate_tiles(tmpdir: Path, image_data: dict):
     """Generator for all the tiles in the xyz map dataset
     to download."""
 
@@ -83,7 +83,7 @@ async def download_tiles(image_data: dict) -> list:
     async with httpx.AsyncClient(http2=True) as session:
         async with asyncio.TaskGroup() as tg:
             # Keep QUEUE_SIZE (1000) running at once
-            for tile in generate_tiles(tmpdir, image_data):
+            async for tile in generate_tiles(tmpdir, image_data):
                 if len(tasks) < QUEUE_SIZE:
                     tasks.add(tg.create_task(fetch_tile(session, tile)))
                 else:
